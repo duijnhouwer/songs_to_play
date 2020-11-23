@@ -7,6 +7,10 @@ Dmaj7 = |||000
     1 x|||||
 Bm7 = |0|0|0
 	  ||||||
+	  
+	  1 ||||||
+Gmaj7 = |0|||0
+	  	0|||||
 
 Alone again (naturally) - Gilbert O'Sullivan
 
@@ -61,7 +65,7 @@ What do we [Am7] do? [D7]
 	And at [Am] sixty-five years old 
 	My [Cm] mother, God rest her soul
 	Couldn't [G] understand why the [G+] only man 
-		[G6] She had ever loved had been [F#7] taken
+		She had [G6] ever loved had been [F#7] taken
 
 	[Bm] Leaving her to start 
 	With a [Dm] heart so badly [E7] broken
