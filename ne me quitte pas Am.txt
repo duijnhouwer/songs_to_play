@@ -1,5 +1,8 @@
 NE ME QUITTE PAS – JACQUES BREL
 (Transposed from Am)
+      TTTTTT
+Em6 = |00|0|
+	  ||||||
 
              Bm              Bm/A
 Ne me quitte pas, Il faut oublier,
@@ -50,8 +53,8 @@ Ne me quitte pas. Je t'inventerai
 Des mots insensés que tu comprendras
            Em               F#7          
 Je te parlerai de ces amants-la
-                 Bm                  Bm/A
-Qui ont vu deux fois leurs cœurs s'embraser 
+                 Bm             Bm/A
+Qui ont vu deux fois leurs cœurs * s'embraser 
            Em                         F#7           
 Je te raconterai l'histoire de ce roi mort
            Bm                  Bm/A

@@ -1,0 +1,508 @@
+% This script is to perform full display cal using images from D3 for
+% ML1 Mockups Static/ MonoVision units
+tic
+%% House keeping
+close all;
+clear all;
+
+% % Input data
+% File_dir='X:\Mo\ML1_POC1_Variable_Lens\Monovision_Lens_Group20\Monovision_Small_G9206P002827_L1.4-2.7_R0.1-1.2\2019-03-29-13-35-33_Images_For_InSitu';
+% left_far = 1.4;
+% left_near = 2.7;
+% right_far = 0.1;
+% right_near = 1.2;
+
+% Large=1; Small=2;
+%SKU_n= 2; 
+
+data_prompt = {'Data location:','Device size:','Left far diopter:','Left near diopter:','Right far diopter:','Right near diopter:'};
+dlgtitle = 'Data Input';
+dims = [1 120; 1 35; 1 35; 1 35; 1 35; 1 35];
+input_data = inputdlg(data_prompt,dlgtitle,dims);
+
+File_dir = input_data{1};
+left_far = str2double(input_data{3});
+left_near = str2double(input_data{4});
+right_far = str2double(input_data{5});
+right_near = str2double(input_data{6});
+
+if strcmp(input_data{2}, 'Large') || strcmp(input_data{2}, 'large')
+    SKU_n = 1;
+
+elseif strcmp(input_data{2}, 'Small') || strcmp(input_data{2}, 'small')
+    SKU_n = 2;
+else
+    error('Wrong input for device size');
+end
+
+
+% % % Include dependencies
+% addpath(genpath('X:\Mo\mfiles\calibration_matlab_octave-master_07_11_2019\calibration_matlab_octave-master'))
+% addpath(genpath('X:\Luke Jia\Projects\WD3\DOE based calibration\mfiles\CameraCalibration_DOE'));
+% addpath(genpath('X:\Luke Jia\Projects\Edge\R2-C2\mfiles\wcam_extrinsic-master'));
+% addpath(genpath('X:\Luke Jia\Projects\Edge\Display  geometry calibration\mfiles\DisplayGeoCal'));
+% % JY's cal toolbox
+% addpath(genpath('X:\Luke Jia\Projects\Calibration Simulation\mfiles\TOOLBOX_calib'));
+% addpath(genpath('X:\Mo\mfiles\Moltres'));
+% 
+% % % opencv library
+% cd('C:\dev\mexopencv')
+% addpath('C:\dev\mexopencv')
+% addpath('C:\dev\mexopencv\opencv_contrib')
+% % mexopencv.make('opencv_path','C:\dev\build\install', 'opencv_contrib',true)
+% mexopencv.make;
+
+% % plot flag
+Figure_flag=1;
+
+ 
+% % Constants
+% for dot sorting
+Step_Size=50;
+Seperation_space_ratio=0.5;
+Bound_radius=Step_Size*Seperation_space_ratio;
+
+%distance from the unit to the checkerboard;0.6m
+Step_Size_IDS_Physical_Checker=114;
+Step_Size_World_Physical_Checker=22; 
+
+doadapthist = 1;
+
+% Checker size for the physical circle checker board, in meter
+SquareSize_Physical_Checker=28.591e-3;
+% Physical checkerboard order
+Physical_Checker_Order_X=15;
+Physical_Checker_Order_Y=12;
+
+% Virtual checkerboard order
+Virtual_Checker_Order_X=15;
+Virtual_Checker_Order_Y=11;
+
+% Virtual checker board size
+SquareSize = 40;  % in units of pixels
+Center_offset=[640 480];
+
+% display related
+
+% Channel list: 0-blue, 1-green, 2-red
+Channel_list=[0 1 2 0 1 2];
+Channel_color_list={'Blue','Green','Red','Blue','Green','Red'};
+buf_wh = [1280 960];
+LUT_wh=[17 13];
+Cal_input_data=[];
+% % Sepcify side
+Display_side={'left','right'};
+Device_SKU={'L','S'};
+
+
+
+for side_n=1:2
+    % Allocate memoery
+    Cal_input_data=[];   
+    % Initialize LUT boundary
+    LUT_bnds = [1;1] * [-inf, inf];
+    
+    % Diopter list
+    if side_n==1
+        %Left display far far far near near near
+        Dpt_list=[left_far left_far left_far left_near left_near left_near;];
+    else
+        %Right display far far far near near near
+        Dpt_list=[right_far right_far right_far right_near right_near right_near];
+    end
+    
+    File_List=dir([File_dir '\' Display_side{side_n} '_C3_no_wearable_1.png']);
+
+    if ~isempty(File_List)
+        Im_raw=imread([File_dir '\' File_List(1).name ]);
+    else
+        error(['Did not find the C3 images for' Display_side{side_n}] );
+    end
+    % this function does the intrinsics cal of the eye proxies using the DOE
+    Cal_result_C3 = DOE_camera_rig_Calibration_For_D3(Im_raw,Figure_flag);
+    
+    IntrinsicMatrix = [Cal_result_C3(1) 0 0; 0 Cal_result_C3(2) 0; Cal_result_C3(3) Cal_result_C3(4) 1];
+    radialDistortion = Cal_result_C3(5:7);
+    TangentialDistortion= Cal_result_C3(8:9);
+    cameraParams_IDS = cameraParameters('IntrinsicMatrix',IntrinsicMatrix,'RadialDistortion',radialDistortion,'TangentialDistortion',TangentialDistortion);
+    
+    
+    %% Extrinsic between world camera and eproxy camera
+    %% IDS camera
+    File_List=dir([File_dir '\' Display_side{side_n} '_EPWorld_Black1.png']);
+
+    if ~isempty(File_List)
+    Im_raw=imread([File_dir '\' File_List(1).name ]);
+    else
+    error(['Did not find the extrinsic IDS images for' Display_side{side_n}] );
+    end
+
+    % demosaic and in case read as rgb image
+    if size(Im_raw,3)>1
+    Im_raw=rgb2gray(Im_raw);
+        Im=rgb2gray(demosaic(Im_raw,'rggb'));
+    else
+        Im=rgb2gray(demosaic(Im_raw,'rggb'));
+    end
+    
+    [imagePoints, boardSize, ~] = detectCheckerboardPoints(Im,'MinCornerMetric',0.05);
+    bdSize=fliplr(boardSize);
+    % detect circle center
+    center=findCenter(Im_raw,imagePoints,bdSize);
+    % sort the orders
+    [ Dots_Mat1 ] = DotSortOrder( Physical_Checker_Order_X,Physical_Checker_Order_Y,imagePoints, center(1), center(2), Step_Size_IDS_Physical_Checker, Step_Size_IDS_Physical_Checker*Seperation_space_ratio);
+    [ Dots_Mat  ] = rmmissing(Dots_Mat1,1);
+    % Visually confirm the detection
+    if Figure_flag
+        figure;
+        title('IDS camera: Circlechecker detection for extrinsic');
+        imagesc(demosaic(Im_raw,'rggb'));
+        %colormap(gray)
+        hold on;
+        plot(Dots_Mat(:,1),Dots_Mat(:,2),'r*');
+        plot(center(1),center(2),'go');
+    end
+    
+    % Creating World Points
+    Dots_Mat(:,5:6)=Dots_Mat(:,3:4)*SquareSize_Physical_Checker;
+    Dots_Mat(:,7)=0;
+
+    % use SovlePnP from OpenCV
+    worldPoints=Dots_Mat(:,5:7);
+    ImagePts=Dots_Mat(:,1:2);
+    fx=Cal_result_C3(1);
+    fy=Cal_result_C3(2);
+    cx= Cal_result_C3(3);
+    cy= Cal_result_C3(4);
+    k1= Cal_result_C3(5);
+    k2= Cal_result_C3(6);
+    k3= Cal_result_C3(7);
+    p1= Cal_result_C3(8);
+    p2= Cal_result_C3(9);
+
+    [Rotation_vec, Translation_vec, ~] = cv.solvePnP(worldPoints, ImagePts,[fx 0 cx; 0 fy cy; 0 0 1], 'DistCoeffs',[k1 k2 p1 p2 k3]);
+    [xp,~,~,~,~,~,~] = project_points2(worldPoints',Rotation_vec,Translation_vec,[fx; fy],[cx; cy],[k1 k2 p1 p2 k3]',0);
+    Pixel_Offset_IDS_K_Prop=xp'-ImagePts;  
+    RMS_Error_IDS_K_Prop=mean(rms(Pixel_Offset_IDS_K_Prop,2));
+    RMS_Error_IDS_K_Prop_arcmin= atand((RMS_Error_IDS_K_Prop/fx)*60);
+    IDS_K_World=[rodrigues(Rotation_vec) Translation_vec;0 0 0 1];
+    figure;
+    title('IDS Reprojection Detected Points');
+    hold on;
+    plot(xp(1,:),xp(2,:),'r+')
+    plot(ImagePts(:,1)',ImagePts(:,2)','b+')
+    figure;
+    quiver(xp(1,:)',xp(2,:)',ImagePts(:,1),ImagePts(:,2));
+    title('IDS Reprojection Error');
+  
+% World camera
+% Read world camera intrinsic. This part may change in future depending the way to get sensor cal data
+% If using world camera intrinsics from the ml_helmet.yaml file from the trident factory calibration
+
+    sensors = {'world_left', 'world_right', 'side_left', 'side_right', 'eye_left', 'eye_right', 'video', 'depth'};
+    info=ReadYamlfile([File_dir '\ml_helmet.yaml'], sensors);
+    
+    IntrinsicMatrix = info.K{side_n}';
+    radialDistortion = info.dist_coeffs{side_n};
+    cameraParams_world = cameraParameters('IntrinsicMatrix',IntrinsicMatrix,'RadialDistortion',radialDistortion);
+
+ 
+    % process circle checker images
+    File_List=dir([File_dir '\' Display_side{side_n} 'World0.png']);
+    if ~isempty(File_List)
+        Im_raw=imread([File_dir '\' File_List(1).name ]);
+    else
+        error(['Did not find the extrinsic world camera images for' Display_side{side_n}] );
+    end
+    
+    % demosaic and in case read as rgb image
+    if size(Im_raw,3)>1
+        Im_raw=rgb2gray(Im_raw);
+    end
+    
+    % detect checkerboard
+    [imagePoints, boardSize, imagesUsed] = detectCheckerboardPoints(Im_raw,'MinCornerMetric',0.05);
+    bdSize=fliplr(boardSize);
+    % detect circle center
+    [center]=findCenter(Im_raw,imagePoints,bdSize);
+    % sort the orders
+    [ Dots_Mat_world1 ] = DotSortOrder( Physical_Checker_Order_X,Physical_Checker_Order_Y,imagePoints, center(1), center(2), Step_Size_World_Physical_Checker, Step_Size_World_Physical_Checker*Seperation_space_ratio);
+    [ Dots_Mat_world ] = rmmissing(Dots_Mat_world1,1);
+    Dots_Mat_world(:,5:6)=Dots_Mat_world(:,3:4)*SquareSize_Physical_Checker;
+    Dots_Mat_world(:,7)=0;
+    if Figure_flag
+        figure;
+        title('World camera: Circlechecker detection for extrinsic');
+        imagesc(Im_raw);
+        %colormap(gray)
+        hold on;
+        plot(Dots_Mat_world(:,1),Dots_Mat_world(:,2),'r*')
+        plot(center(1),center(2),'go')
+    end
+    
+     % use SovlePnP from OpenCV
+    worldPoints=Dots_Mat_world(:,5:7);
+    ImagePts=Dots_Mat_world(:,1:2);
+    fx=IntrinsicMatrix(1,1);
+    fy=IntrinsicMatrix(2,2);
+    cx= IntrinsicMatrix(3,1);
+    cy= IntrinsicMatrix(3,2);
+    k1= radialDistortion(1);
+    k2= radialDistortion(2);
+    k3= radialDistortion(3);
+    [Rotation_vec, Translation_vec, success] = cv.solvePnP(worldPoints, ImagePts,[fx 0 cx; 0 fy cy; 0 0 1], 'DistCoeffs',[k1 k2 0 0 k3]);
+    [xp,dxdom,dxdT,dxdf,dxdc,dxdk,dxdalpha] = project_points2(worldPoints',Rotation_vec,Translation_vec,[fx; fy],[cx; cy],[k1 k2 0 0 k3]',0);
+    Pixel_Offset_WorldCam_K_World=xp'-ImagePts;
+    RMS_Error_WorldCam_K_World=mean(rms(Pixel_Offset_WorldCam_K_World,2));
+    RMS_Error_WorldCam_K_World_arcmin= atand((RMS_Error_WorldCam_K_World/fx)*60);
+    WorldCam_K_World=[rodrigues(Rotation_vec) Translation_vec;0 0 0 1];
+
+    figure;
+    title('WorldCamera Reprojection Detected Points');
+    hold on;
+    plot(xp(1,:),xp(2,:),'r+')
+    plot(ImagePts(:,1)',ImagePts(:,2)','b+')
+    figure;
+    quiver(xp(1,:)',xp(2,:)',ImagePts(:,1),ImagePts(:,2));
+    title('World Camera Reprojection Error');
+
+      % C3 image with wearable
+     File_List=dir([File_dir '\' Display_side{side_n} '_C3_with_wearable_1.png']);
+     if ~isempty(File_List)
+         Im_raw=imread([File_dir '\' File_List(1).name ]);
+     else
+         error(['Did not find the C3 images for' Display_side{side_n}] );
+    end
+    % this function does the intrinsics cal of the eye proxies using the DOE
+    Cal_result_C3_with_wearable = DOE_camera_rig_Calibration_For_D3(Im_raw,Figure_flag);
+    IntrinsicMatrix = [Cal_result_C3_with_wearable(1) 0 0; 0 Cal_result_C3_with_wearable(2) 0; Cal_result_C3_with_wearable(3) Cal_result_C3_with_wearable(4) 1];
+    radialDistortion = Cal_result_C3_with_wearable(5:7);
+    TangentialDistortion= Cal_result_C3(8:9);
+    cameraParams_IDS_with_wearable = cameraParameters('IntrinsicMatrix',IntrinsicMatrix,'RadialDistortion',radialDistortion,'TangentialDistortion',TangentialDistortion);
+    
+    %Ray Angle Eye proy camera Intrinsics Comparison
+    Boresight_Error_arcmin=Compare_Intrinsics_RayAngle(Cal_result_C3_with_wearable(1:9),Cal_result_C3(1:9));
+    
+%% Lookup table 
+    % read and process images from virtual circle checker board
+    for n=1:length(Dpt_list)
+        File_List=dir([File_dir '\' Display_side{side_n} 'ColorOnly' Channel_color_list{n} num2str(Dpt_list(n)) '.png']);
+
+        if ~isempty(File_List)
+            Im_raw=imread([File_dir '\' File_List(1).name ]);
+        else
+            error(['Did not find the ids camera images for ' Display_side{side_n} 'ColorOnly' Channel_color_list(n) num2str(Dpt_list(n))]);
+        end
+        
+        if size(Im_raw,3)>1
+            warning('Not a Bayer image or monochrome image, please double check');
+        else
+            Im=(demosaic(Im_raw,'rggb'));
+        end
+        Im_data=rgb2gray(Im);
+        % detect checkerboard
+        boardsize=[24,32]; % number of squares high by number of squares wide
+        doadapthist = 0;
+        % use Huck's super checkerboard detection function
+        [impts2 , center]= superCheckerboardDetector(Im_data, boardsize ,doadapthist,0 );
+        % compute confidince for each feature point
+        [error,Dots_Mat]=checkerboardError(impts2,boardsize);
+        % find the ones with error &gt;3
+       inds=find(error>3); % find errors greater than 3 pixels
+        % set those to NaN
+        Dots_Mat(inds,1:2)=nan;
+        
+        if Figure_flag
+            figure;
+            imagesc(Im_data);
+            hold on;
+            plot(Dots_Mat(:,1),Dots_Mat(:,2),'r*')
+            plot(center(1),center(2),'go')
+            % double check if the sorting is correct
+            for ii=1:size(Dots_Mat,1)
+                text(Dots_Mat(ii,1),Dots_Mat(ii,2),[num2str(Dots_Mat(ii,3)) ',' num2str(Dots_Mat(ii,4))],'fontsize',8);
+            end
+            title(File_List(1).name);
+        end
+        
+        % construct the data input
+        for m=1:size(Dots_Mat,1)
+            temp(m,1)=EncodeSortOrder(Dots_Mat(m,3),Dots_Mat(m,4));
+        end
+        temp(:,2) = Dots_Mat(:,4)*SquareSize+Center_offset(1)-0.5;
+        temp(:,3) = Dots_Mat(:,3)*SquareSize+Center_offset(2)-0.5;
+        temp(:,4) = Dots_Mat(:,1)-1;
+        temp(:,5) = Dots_Mat(:,2)-1;
+%       temp(:,6:7) = pixel_to_cartesian (temp(:,4:5)', cameraParams_IDS_with_wearable.IntrinsicMatrix', cameraParams_IDS_with_wearable.RadialDistortion)';
+        temp(:,6:7) = undistort_points (temp(:,4:5)', cameraParams_IDS.IntrinsicMatrix', cameraParams_IDS.RadialDistortion,fliplr(size(Im_raw)), cameraParams_IDS.TangentialDistortion)';
+        temp(:,8) = Dpt_list(n);
+        temp(:,9) = Channel_list(n);
+        temp(:,10) = n;
+        Cal_input_data = [Cal_input_data;temp];
+        
+    end
+    % calibrationq
+    verbose=1;
+    r_T_d =get_rig_T_display_CAD (['PEQ_6A_' Device_SKU{SKU_n}],Display_side{side_n} );
+    
+    
+     rig_T_eyeproxy= info.rig_T_cn{1,side_n}*WorldCam_K_World/(IDS_K_World);
+     Display_side{side_n};
+    
+    result1.(Display_side{side_n})=calibrate_and_normalize_peq_LUTs(...
+        Cal_input_data,...
+        'buf_wh', buf_wh,...
+        'LUT_wh',LUT_wh,...
+        'verbose',verbose,...
+        'rig_T_display0', r_T_d,...
+        'rig_T_eyeproxy',rig_T_eyeproxy...
+        );
+    % add a placeholder values for LUT_buds
+    for m=1:size(result1.(Display_side{side_n}).LUTs,2)
+        result1.(Display_side{side_n}).LUT_RectShape_x(:,:,m) = reshape(result1.(Display_side{side_n}).LUTs(1:end/2,m),fliplr(LUT_wh));
+        result1.(Display_side{side_n}).LUT_RectShape_y(:,:,m) = reshape(result1.(Display_side{side_n}).LUTs(end/2+1:end,m),fliplr(LUT_wh));
+     % compute LUT boundary
+    LUT_bnds(1,1)=-(Center_offset(1)/result1.(Display_side{side_n}).unused_scales_x(1));
+    LUT_bnds(1,2)=Center_offset(1)/result1.(Display_side{side_n}).unused_scales_x(1);
+    LUT_bnds(2,1)=-(Center_offset(2)/result1.(Display_side{side_n}).unused_scales_y(1));
+    LUT_bnds(2,2)=Center_offset(2)/result1.(Display_side{side_n}).unused_scales_y(1);
+
+       %Compute FOV
+     FOV= 2*atand(2*800/((result1.(Display_side{side_n}).unused_scales_x(1))+result1.(Display_side{side_n}).unused_scales_y(1)));
+       
+       % reshape LUT to match yaml file format
+        temp_a_x=result1.(Display_side{side_n}).LUT_RectShape_x(:,:,m)';
+        temp_b_x=temp_a_x(:);
+        temp_a_y=result1.(Display_side{side_n}).LUT_RectShape_y(:,:,m)';
+        temp_b_y=temp_a_y(:);
+        result1.(Display_side{side_n}).LUT_yaml(:,m) = reshape([temp_b_x,temp_b_y]',[2*LUT_wh(1)*LUT_wh(2)  1]);
+    end
+    
+    % LUT_buds is the max overlaped rectangle shape within 6 planes
+    result1.(Display_side{side_n}).LUT_bnds=LUT_bnds;
+    % set absorlute =1
+    result1.(Display_side{side_n}).absolute=1;
+    % add resolution
+    result1.(Display_side{side_n}).resolution=buf_wh;
+    % Save C3 results with no wearable
+    result1.(Display_side{side_n}).C3_result=Cal_result_C3;
+    % Save C3 results with wearable
+    result1.(Display_side{side_n}).Cal_result_C3_with_wearable=Cal_result_C3_with_wearable;
+    %Save rig_T_eyeproxy
+    result1.(Display_side{side_n}).rig_T_eyeproxy=rig_T_eyeproxy;
+    %Save FOV
+    result1.(Display_side{side_n}).FOV=FOV;
+    %Save Boresight Error
+    result1.(Display_side{side_n}).Boresight_Error_arcmin=Boresight_Error_arcmin;
+    
+end
+
+
+%% Plots 
+figure;
+subplot(1,2,1)
+plot_LUTs (result1.left,1:3);
+title('Left far plane');
+subplot(1,2,2)
+plot_LUTs (result1.left,4:6);
+title('Left near plane');
+
+figure;
+subplot(1,2,1)
+plot_LUTs (result1.right,1:3);
+title('Right far plane');
+subplot(1,2,2)
+plot_LUTs (result1.right,4:6);
+title('Right near plane');
+
+
+
+
+%% Insert Display cal into wearable.rig
+
+NET.addAssembly(fullfile('X:\Mo\mfiles\Moltres\BuildWearableRig\bin\x64\ModifyWearableRig.dll'));
+
+rigModifier = ModifyWearableRig.RigModifier();
+rigModifier.ReadPath = fullfile(File_dir,'wearable.rig');
+
+rigModifier.ReadFromFile();
+
+%Replace display extrinsics
+rigModifier.ReplaceExtrinsics(result1.left.rig_T_display,'display_left');
+rigModifier.ReplaceExtrinsics(result1.right.rig_T_display,'display_right');
+
+rigModifier.ReplaceDisplayDiopters('display_left',left_near,left_far);
+rigModifier.ReplaceDisplayDiopters('display_right',right_near,right_far);
+
+%Replace display scale
+for k=1:length(result1.left.unused_scales_x)
+    rigModifier.ReplaceDisplayScale('display_left',result1.left.diopters(k),[result1.left.unused_scales_x(k),result1.left.unused_scales_y(k)]);
+    rigModifier.ReplaceDisplayScale('display_right',result1.right.diopters(k),[result1.right.unused_scales_x(k),result1.right.unused_scales_y(k)]);
+end
+
+Channels = {'BLUE','GREEN','RED'};
+%Replace display LUT
+
+LeftLUTMeta = [result1.left.LUT_bnds(:,1);result1.left.LUT_bnds(:,2);result1.left.LUT_wh'];
+RightLUTMeta = [result1.right.LUT_bnds(:,1);result1.right.LUT_bnds(:,2);result1.right.LUT_wh'];
+for k=1:length(result1.left.diopters)
+    rigModifier.ReplaceLUT('display_left',result1.left.diopters(k),Channels{result1.left.channels(k)+1},[LeftLUTMeta; ReshapeLUT( result1.left.LUTs(:,k))]);
+    rigModifier.ReplaceLUT('display_right',result1.right.diopters(k),Channels{result1.right.channels(k)+1},[RightLUTMeta; ReshapeLUT( result1.right.LUTs(:,k))]);
+end
+
+%diag_fov_deg = vecAngle ([result1.left.LUT_bnds(1,1); result1.left.LUT_bnds(2,1); 1], [result1.left.LUT_bnds(1,2); result1.left.LUT_bnds(2,2); 1]) * 180 / pi;
+
+rigModifier.ReplaceDisplayFOV('display_left',result1.left.FOV);
+rigModifier.ReplaceDisplayFOV('display_right',result1.right.FOV);
+
+rigModifier.SavePath = fullfile(File_dir,'wearable_seeThrough.rig');
+rigModifier.WriteToFile();
+
+
+
+
+%% Insert eyeproxy.yaml
+
+yamlModifier = ModifyWearableRig.EyeproxyYamlModifier;
+yamlModifier.ReadPath = 'X:\Mo\ML1_POC1_Variable_Lens\Monovision_Lens_Group20\eye_proxy_template.yaml';
+yamlModifier.SavePath = fullfile(File_dir,'eye_proxyD3_insitu_seeThrough.yaml');
+
+yamlModifier.ReadFromFile();
+
+CameraMatrixLeft = eye(3,3);
+CameraMatrixLeft(1,1) = result1.left.Cal_result_C3_with_wearable(1);
+CameraMatrixLeft(2,2) = result1.left.Cal_result_C3_with_wearable(2);
+CameraMatrixLeft(1,3) = result1.left.Cal_result_C3_with_wearable(3);
+CameraMatrixLeft(2,3) = result1.left.Cal_result_C3_with_wearable(4);
+
+CameraMatrixRight = eye(3,3);
+CameraMatrixRight(1,1) = result1.right.Cal_result_C3_with_wearable(1);
+CameraMatrixRight(2,2) = result1.right.Cal_result_C3_with_wearable(2);
+CameraMatrixRight(1,3) = result1.right.Cal_result_C3_with_wearable(3);
+CameraMatrixRight(2,3) = result1.right.Cal_result_C3_with_wearable(4);
+
+DistortionLeft = zeros(1,5);
+DistortionLeft(1:2) = result1.left.Cal_result_C3_with_wearable(5:6);
+DistortionLeft(3:4) = result1.left.Cal_result_C3_with_wearable(8:9);
+DistortionLeft(5) = result1.left.Cal_result_C3_with_wearable(7);
+
+DistortionRight = zeros(1,5);
+DistortionRight(1:2) = result1.right.Cal_result_C3_with_wearable(5:6);
+DistortionRight(3:4) = result1.right.Cal_result_C3_with_wearable(8:9);
+DistortionRight(5) = result1.right.Cal_result_C3_with_wearable(7);
+
+yamlModifier.ReplaceCameraMatrix(CameraMatrixLeft,'eye_proxy_left');
+yamlModifier.ReplaceCameraMatrix(CameraMatrixRight,'eye_proxy_right');
+yamlModifier.ReplaceDistortion(DistortionLeft,'eye_proxy_left');
+yamlModifier.ReplaceDistortion(DistortionRight,'eye_proxy_right');
+yamlModifier.ReplaceExtrinsics(result1.left.rig_T_eyeproxy,'eye_proxy_left');
+yamlModifier.ReplaceExtrinsics(result1.right.rig_T_eyeproxy,'eye_proxy_right');
+yamlModifier.ReplaceValidFov(result1.left.Cal_result_C3_with_wearable(11),'eye_proxy_left');
+yamlModifier.ReplaceValidFov(result1.right.Cal_result_C3_with_wearable(11),'eye_proxy_right');
+
+yamlModifier.WriteToFile();
+
+toc
+
+cd(File_dir)
+save Result_Insitu_Seethrough.mat result1

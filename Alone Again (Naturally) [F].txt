@@ -1,4 +1,4 @@
-https://www.guitaretab.com/g/gilbert-o-sullivan/288744.html
+bhttps://www.guitaretab.com/g/gilbert-o-sullivan/288744.html
 
       1 xx|||| 
 Dmaj7 = |||000
@@ -8,31 +8,33 @@ Dmaj7 = |||000
 Bm7 = |0|0|0
 	  ||||||
 	  
-	  1 ||||||
-Gmaj7 = |0|||0
-	  	0|||||
+	  1 xx||0|
+Fmaj7 = |||0||
+	  	||0|||
 
 Alone again (naturally) - Gilbert O'Sullivan
 
-[G] In a little while from now 
-If I'm [Bm] not feeling any less sour
-I [Dm] promise myself to treat myself 
-And [Bm] visit a nearby [E7] tower
+[F] In a little while from now 
+If I'm [Am] not feeling any less sour
+I [Cm] promise myself to treat myself 
+And [Am] visit a nearby [D7] tower
 
-And [Am] climbing to the top 
-To [Cm] throw myself off
-In an [G] effort to make it [G+] clear to who(ever) 
-	[G6] what it's like when you're [F#7] shattered
+And [Gm] climbing to the top 
+To [Bbm] throw myself off
+In an [F] effort to make it [F+] clear to who(ever) 
+	[F6] what it's like when you're [E7] shattered
 
-Left [Bm7] standing in the lurch
-At a [Dm] church with people [E7] saying
-"My [Am] God, that's tough, she stood him up
-No [Cm] point in us remaining
-We [G] may as well go [Gmaj7] home"
-As [Bm7] I did on my [E7] own
-A-[Am]-lone again [D7], naturally
+Left [Am7] standing in the lurch
+At a [Cm] church with people [D7] saying
+"My [Gm] God, that's tough, she stood him up
+No [Bbm] point in us remaining
+We [F] may as well go [Fmaj7] home
+As [Am7] I did on my [D7] own
+A-[Gm]-lone again [C7], naturally
 
 
+
+--------
 	[G] To think that only yesterday 
 	I was [Bm] cheerful bright and gay
 	Looking [Dm] forward - who wouldn't do? 
